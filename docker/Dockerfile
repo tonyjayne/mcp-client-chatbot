@@ -1,6 +1,11 @@
 FROM node:23-alpine AS builder
 ARG DOCKER_BUILD="1"
+ARG GITHUB_CLIENT_ID
+ARG NEXT_PUBLIC_GITHUB_CLIENT_ID
 WORKDIR /app
+
+ENV GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+ENV NEXT_PUBLIC_GITHUB_CLIENT_ID=${NEXT_PUBLIC_GITHUB_CLIENT_ID}
 
 COPY . . 
 
@@ -40,4 +45,4 @@ COPY --from=builder /app/.env ./.env
 COPY --from=builder /app/messages ./messages
 EXPOSE 3000
 
-CMD pnpm db:migrate && pnpm start
+CMD ["sh", "-c", "pnpm db:migrate && pnpm start"]

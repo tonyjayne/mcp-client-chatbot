@@ -3,13 +3,15 @@ services:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile
+      args:
+        - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+        - NEXT_PUBLIC_GITHUB_CLIENT_ID=${NEXT_PUBLIC_GITHUB_CLIENT_ID}
     ports:
-      - '3000:3000'
+      - '3002:3000'
     environment:
       - NO_HTTPS=1
     env_file:
-      - .env.docker # docker .env
-      - .env
+      - .env # Consolidated Docker environment file
     dns:
       - 8.8.8.8 # Google's public DNS server
       - 8.8.4.4 # Google's public DNS server
@@ -22,8 +24,7 @@ services:
   postgres:
     image: postgres:17
     env_file:
-      - .env.docker # docker .env
-      - .env
+      - .env # Consolidated Docker environment file
     networks:
       - mcp_client_network
     volumes:
