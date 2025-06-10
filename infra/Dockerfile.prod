@@ -1,0 +1,78 @@
+# Production Dockerfile for cortex-infra deployment
+# This builds a self-contained image optimized for production use
+
+FROM node:23-alpine AS builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy package files and required scripts for postinstall
+COPY package.json pnpm-lock.yaml ./
+COPY scripts ./scripts
+COPY src/lib ./src/lib
+COPY tsconfig.json ./
+COPY .env.example ./
+
+# Set environment variable for Docker build
+ENV DOCKER_BUILD=1
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN pnpm build
+
+# Production stage
+FROM node:23-alpine AS runner
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN npm install -g pnpm && \
+    apk add --no-cache curl bash dumb-init
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Copy built application
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/messages ./messages
+
+# Copy necessary runtime files
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib ./src/lib
+COPY --from=builder --chown=nextjs:nodejs /app/src/types/chat.ts ./src/types/chat.ts
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+
+# Create volume mount points
+RUN mkdir -p /app/data /app/config/mcp-servers && \
+    chown -R nextjs:nodejs /app/data /app/config
+
+# Copy environment mapping script
+COPY infra/scripts/env-mapping.js ./scripts/env-mapping.js
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-3000}/api/health || exit 1
+
+# Set user
+USER nextjs
+
+# Expose port
+EXPOSE 3000
+
+# Environment defaults
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Start command with environment mapping and migration
+CMD ["dumb-init", "sh", "-c", "node scripts/env-mapping.js && pnpm db:migrate && pnpm start"]
